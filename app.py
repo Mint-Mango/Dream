@@ -3,13 +3,13 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(
-    page_title="3D 블록 월드",
+    page_title="3D 이동 테스트",
     page_icon="🎮",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-st.title("🎮 3D 블록 월드")
+st.title("3D 공간 이동 테스트")
 st.caption("WASD 이동 | 마우스 드래그 시점 회전 | SPACE 점프")
 
 game_html = """
@@ -17,18 +17,18 @@ game_html = """
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+
 <style>
     body {
         margin: 0;
         overflow: hidden;
-        background: #87ceeb;
+        background: #777777;
         font-family: Arial, sans-serif;
     }
 
     #game {
         width: 100%;
         height: 100vh;
-        display: block;
         outline: none;
     }
 
@@ -36,11 +36,10 @@ game_html = """
         position: absolute;
         top: 50%;
         left: 50%;
-        color: white;
-        font-size: 26px;
         transform: translate(-50%, -50%);
+        color: #111111;
+        font-size: 24px;
         pointer-events: none;
-        text-shadow: 0 0 3px black;
     }
 
     #info {
@@ -48,10 +47,10 @@ game_html = """
         top: 15px;
         left: 15px;
         padding: 12px;
-        background: rgba(0,0,0,0.55);
-        color: white;
-        border-radius: 8px;
+        background: rgba(30,30,30,0.75);
+        color: #dddddd;
         font-size: 14px;
+        border-radius: 6px;
         pointer-events: none;
     }
 </style>
@@ -61,12 +60,12 @@ game_html = """
 
 <div id="game" tabindex="0"></div>
 <div id="crosshair">+</div>
+
 <div id="info">
-    🎮 3D 블록 월드<br>
+    3D MOVEMENT TEST<br>
     WASD : 이동<br>
-    마우스 드래그 : 시점 회전<br>
-    SPACE : 점프<br>
-    게임 화면 클릭 후 조작
+    Mouse Drag : 시점 회전<br>
+    SPACE : 점프
 </div>
 
 <script type="module">
@@ -75,22 +74,24 @@ import * as THREE from
 "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js";
 
 // ============================
-// 1. 기본 장면 생성
+// 1. 3D 환경
 // ============================
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 30, 85);
 
+scene.background = new THREE.Color(0x777777);
+
+// 카메라
 const camera = new THREE.PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
     0.1,
-    1000
+    2000
 );
 
 camera.position.set(0, 1.7, 5);
 
+// 렌더러
 const renderer = new THREE.WebGLRenderer({
     antialias: true
 });
@@ -104,191 +105,50 @@ renderer.setPixelRatio(
     Math.min(window.devicePixelRatio, 2)
 );
 
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
 const game = document.getElementById("game");
+
 game.appendChild(renderer.domElement);
 
 // ============================
-// 2. 조명 설정
+// 2. 회색 바닥
 // ============================
 
-const ambientLight = new THREE.AmbientLight(
-    0xffffff,
-    0.65
+const floorGeometry = new THREE.PlaneGeometry(
+    2000,
+    2000
 );
 
-scene.add(ambientLight);
+const floorMaterial = new THREE.MeshBasicMaterial({
+    color: 0x888888,
+    side: THREE.DoubleSide
+});
 
-const sunlight = new THREE.DirectionalLight(
-    0xffffff,
-    1.5
+const floor = new THREE.Mesh(
+    floorGeometry,
+    floorMaterial
 );
 
-sunlight.position.set(15, 30, 10);
-sunlight.castShadow = true;
+floor.rotation.x = -Math.PI / 2;
 
-sunlight.shadow.mapSize.set(1024, 1024);
-sunlight.shadow.camera.left = -40;
-sunlight.shadow.camera.right = 40;
-sunlight.shadow.camera.top = 40;
-sunlight.shadow.camera.bottom = -40;
-
-scene.add(sunlight);
+scene.add(floor);
 
 // ============================
-// 3. 블록 생성 함수
+// 3. 검은색 격자선
 // ============================
 
-const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+const grid = new THREE.GridHelper(
+    2000,       // 격자 전체 크기
+    2000,       // 격자 개수 (1칸 = 1m)
+    0x111111,   // 중심선 색상
+    0x333333    // 일반 격자선 색상
+);
 
-const grassMaterial = new THREE.MeshLambertMaterial({
-    color: 0x59ad45
-});
+grid.position.y = 0.01;
 
-const dirtMaterial = new THREE.MeshLambertMaterial({
-    color: 0x92633b
-});
-
-const stoneMaterial = new THREE.MeshLambertMaterial({
-    color: 0x888888
-});
-
-const woodMaterial = new THREE.MeshLambertMaterial({
-    color: 0x805432
-});
-
-const leafMaterial = new THREE.MeshLambertMaterial({
-    color: 0x278b36
-});
-
-const obstacles = [];
-
-function createBlock(x, y, z, material, solid = false) {
-
-    const block = new THREE.Mesh(
-        cubeGeometry,
-        material
-    );
-
-    block.position.set(x, y, z);
-    block.castShadow = true;
-    block.receiveShadow = true;
-
-    scene.add(block);
-
-    if (solid) {
-        obstacles.push(
-            new THREE.Box3().setFromObject(block)
-        );
-    }
-
-    return block;
-}
+scene.add(grid);
 
 // ============================
-// 4. 평평한 블록 지형
-// ============================
-
-const WORLD_SIZE = 30;
-const HALF_WORLD = WORLD_SIZE / 2;
-
-for (let x = -HALF_WORLD; x < HALF_WORLD; x++) {
-
-    for (let z = -HALF_WORLD; z < HALF_WORLD; z++) {
-
-        createBlock(
-            x,
-            -0.5,
-            z,
-            grassMaterial
-        );
-
-        createBlock(
-            x,
-            -1.5,
-            z,
-            dirtMaterial
-        );
-    }
-}
-
-// ============================
-// 5. 장애물 생성
-// ============================
-
-const blockPositions = [
-    [4, 0.5, 4],
-    [5, 0.5, 4],
-    [4, 1.5, 4],
-    [-4, 0.5, -3],
-    [-4, 1.5, -3],
-    [-4, 2.5, -3],
-    [7, 0.5, -5],
-    [8, 0.5, -5],
-    [9, 0.5, -5],
-    [7, 1.5, -5]
-];
-
-for (const position of blockPositions) {
-
-    createBlock(
-        position[0],
-        position[1],
-        position[2],
-        stoneMaterial,
-        true
-    );
-}
-
-// ============================
-// 6. 나무 생성
-// ============================
-
-function createTree(x, z) {
-
-    for (let y = 0; y < 3; y++) {
-
-        createBlock(
-            x,
-            y + 0.5,
-            z,
-            woodMaterial,
-            true
-        );
-    }
-
-    for (let dx = -1; dx <= 1; dx++) {
-
-        for (let dz = -1; dz <= 1; dz++) {
-
-            createBlock(
-                x + dx,
-                3.5,
-                z + dz,
-                leafMaterial,
-                true
-            );
-        }
-    }
-
-    createBlock(
-        x,
-        4.5,
-        z,
-        leafMaterial,
-        true
-    );
-}
-
-createTree(-7, -7);
-createTree(8, 8);
-createTree(-8, 7);
-createTree(9, -9);
-
-// ============================
-// 7. 키보드 입력
+// 4. 키보드 입력
 // ============================
 
 const keys = {};
@@ -297,15 +157,7 @@ window.addEventListener("keydown", (event) => {
 
     keys[event.code] = true;
 
-    if (
-        [
-            "Space",
-            "ArrowUp",
-            "ArrowDown",
-            "ArrowLeft",
-            "ArrowRight"
-        ].includes(event.code)
-    ) {
+    if (event.code === "Space") {
         event.preventDefault();
     }
 });
@@ -325,7 +177,7 @@ game.addEventListener("click", () => {
 });
 
 // ============================
-// 8. 마우스 시점 회전
+// 5. 마우스 시점 회전
 // ============================
 
 let yaw = 0;
@@ -340,8 +192,10 @@ renderer.domElement.addEventListener(
     (event) => {
 
         dragging = true;
+
         previousX = event.clientX;
         previousY = event.clientY;
+
         game.focus();
     }
 );
@@ -370,11 +224,10 @@ window.addEventListener("mousemove", (event) => {
 });
 
 // ============================
-// 9. 플레이어 물리 설정
+// 6. 플레이어 설정
 // ============================
 
 const PLAYER_HEIGHT = 1.7;
-const PLAYER_RADIUS = 0.28;
 
 const MOVE_SPEED = 5;
 const JUMP_SPEED = 6;
@@ -383,42 +236,25 @@ const GRAVITY = 16;
 let verticalVelocity = 0;
 let grounded = true;
 
-function collides(position) {
-
-    const playerBox = new THREE.Box3(
-        new THREE.Vector3(
-            position.x - PLAYER_RADIUS,
-            position.y - PLAYER_HEIGHT + 0.05,
-            position.z - PLAYER_RADIUS
-        ),
-        new THREE.Vector3(
-            position.x + PLAYER_RADIUS,
-            position.y - 0.05,
-            position.z + PLAYER_RADIUS
-        )
-    );
-
-    return obstacles.some(
-        obstacle => playerBox.intersectsBox(obstacle)
-    );
-}
-
 // ============================
-// 10. 플레이어 이동
+// 7. 플레이어 이동
 // ============================
 
 function updatePlayer(delta) {
 
     camera.rotation.order = "YXZ";
+
     camera.rotation.y = yaw;
     camera.rotation.x = pitch;
 
+    // 전방 방향
     const forward = new THREE.Vector3(
         -Math.sin(yaw),
         0,
         -Math.cos(yaw)
     );
 
+    // 오른쪽 방향
     const right = new THREE.Vector3(
         Math.cos(yaw),
         0,
@@ -429,6 +265,7 @@ function updatePlayer(delta) {
 
     if (keys["KeyW"]) direction.add(forward);
     if (keys["KeyS"]) direction.sub(forward);
+
     if (keys["KeyD"]) direction.add(right);
     if (keys["KeyA"]) direction.sub(right);
 
@@ -436,71 +273,35 @@ function updatePlayer(delta) {
         direction.normalize();
     }
 
-    const movement = direction.multiplyScalar(
+    direction.multiplyScalar(
         MOVE_SPEED * delta
     );
 
-    // X축 충돌 검사
-    const nextX = camera.position.clone();
-    nextX.x += movement.x;
-
-    if (!collides(nextX)) {
-        camera.position.x = nextX.x;
-    }
-
-    // Z축 충돌 검사
-    const nextZ = camera.position.clone();
-    nextZ.z += movement.z;
-
-    if (!collides(nextZ)) {
-        camera.position.z = nextZ.z;
-    }
+    camera.position.x += direction.x;
+    camera.position.z += direction.z;
 
     // 점프
     if (keys["Space"] && grounded) {
-
         verticalVelocity = JUMP_SPEED;
         grounded = false;
     }
 
     verticalVelocity -= GRAVITY * delta;
 
-    const nextY = camera.position.clone();
-    nextY.y += verticalVelocity * delta;
+    camera.position.y += verticalVelocity * delta;
 
-    if (!collides(nextY)) {
-        camera.position.y = nextY.y;
-    } else {
-        if (verticalVelocity < 0) {
-            grounded = true;
-        }
-        verticalVelocity = 0;
-    }
-
-    // 지면 충돌
+    // 바닥 충돌
     if (camera.position.y <= PLAYER_HEIGHT) {
 
         camera.position.y = PLAYER_HEIGHT;
+
         verticalVelocity = 0;
         grounded = true;
     }
-
-    // 맵 경계
-    camera.position.x = THREE.MathUtils.clamp(
-        camera.position.x,
-        -HALF_WORLD + 0.5,
-        HALF_WORLD - 0.5
-    );
-
-    camera.position.z = THREE.MathUtils.clamp(
-        camera.position.z,
-        -HALF_WORLD + 0.5,
-        HALF_WORLD - 0.5
-    );
 }
 
 // ============================
-// 11. 게임 루프
+// 8. 게임 루프
 // ============================
 
 const clock = new THREE.Clock();
@@ -522,7 +323,7 @@ function animate() {
 animate();
 
 // ============================
-// 12. 화면 크기 변경
+// 9. 화면 크기 조정
 // ============================
 
 window.addEventListener("resize", () => {
@@ -539,7 +340,6 @@ window.addEventListener("resize", () => {
 });
 
 </script>
-
 </body>
 </html>
 """
