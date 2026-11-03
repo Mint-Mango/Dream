@@ -3,7 +3,7 @@ import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Backrooms Exploration", page_icon="🎮", layout="wide")
 st.title("BACKROOMS | Level 0")
-st.caption("WASD 이동 · Shift 달리기 · Space 점프 · 마우스 드래그 시점 회전 · R 재시작")
+st.caption("WASD 이동 · Shift 달리기 · Space 점프 · Q 캠코더 · 마우스 드래그 시점 회전 · R 재시작")
 
 HTML = r"""
 <!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -24,17 +24,17 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#211f19;fon
 </script>
 </head><body>
 <div id="game" tabindex="0"></div><div id="cross">+</div>
-<div id="hud"><b>BACKROOMS / LEVEL 0</b><br>WASD: 이동 · SHIFT: 달리기<br>SPACE: 점프 · 마우스 드래그: 시점<br>R: 시작 지점으로 복귀</div>
-<div id="status">WALK</div>
+<div id="hud"><b>BACKROOMS / LEVEL 0</b><br>WASD: 이동 · SHIFT: 달리기<br>SPACE: 점프 · 마우스 드래그: 시점<br>Q: 캠코더 ON/OFF<br>R: 시작 지점으로 복귀</div>
+<div id="status">WALK | CAM OFF</div>
 <script type="module">
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-const N=31, CELL=8, WORLD=N*CELL, HALF=WORLD/2, CEILING=3.4;
+const N=45, CELL=8, WORLD=N*CELL, HALF=WORLD/2, CEILING=3.4;
 const EYE=1.65, RADIUS=0.29, WALK=4.4, RUN=8.8, JUMP=5.5, GRAVITY=17;
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x99916d);
-scene.fog=new THREE.Fog(0x99916d,22,95);
+scene.fog=new THREE.Fog(0x99916d,24,100);
 const camera=new THREE.PerspectiveCamera(76,1,0.05,125);
 camera.position.set(0,EYE,0); camera.rotation.order='YXZ';
 const renderer=new THREE.WebGLRenderer({antialias:true});
@@ -42,7 +42,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 const host=document.getElementById('game');host.appendChild(renderer.domElement);
 const status=document.getElementById('status');
-scene.add(new THREE.AmbientLight(0xffe7a3,1.55));
+scene.add(new THREE.AmbientLight(0xffe7a3,0.95));
 
 // 반복 가능한 의사난수: 새로고침해도 같은 구조
 let seed=20261103;
@@ -130,13 +130,20 @@ while(stack.length){
  const [side,dx,dz]=opts[ri(opts.length)];carve(x,z,side);
  cells[z+dz][x+dx].seen=true;stack.push([x+dx,z+dz]);
 }
-// 여러 개의 긴 직선 통로와 교차 통로
-for(const z of [5,15,25])for(let x=2;x<28;x++)carve(x,z,'e');
-for(const x of [7,23])for(let z=2;z<28;z++)carve(x,z,'s');
-// 넓은 공간: 여러 셀의 내부 칸막이를 제거
-const rooms=[{x:2,z:2,w:4,h:4},{x:11,z:4,w:5,h:4},
- {x:20,z:9,w:5,h:5},{x:3,z:19,w:6,h:5},
- {x:12,z:20,w:6,h:6},{x:24,z:23,w:5,h:5}];
+// 긴 복도는 전체 맵을 가로지르고, 교차로는 여러 번 돌아갈 수 있도록 연결
+for(const z of [7,18,30,39])for(let x=2;x<N-3;x++)carve(x,z,'e');
+for(const x of [8,20,32,40])for(let z=2;z<N-3;z++)carve(x,z,'s');
+
+// 여러 칸을 하나의 큰 공간으로 합침: 기둥이 있는 홀과 열린 구역
+const rooms=[
+ {x:2,z:2,w:6,h:6},{x:14,z:3,w:8,h:6},
+ {x:28,z:4,w:10,h:7},{x:4,z:14,w:9,h:8},
+ {x:23,z:14,w:11,h:9},{x:35,z:21,w:7,h:10},
+ {x:3,z:31,w:10,h:9},{x:15,z:32,w:10,h:10},
+ {x:28,z:33,w:10,h:8},
+ // 시작 구역 주변을 넓게 트고 여러 출구를 둠
+ {x:19,z:19,w:7,h:7}
+];
 const roomCells=new Set();
 for(const room of rooms){
  for(let z=room.z;z<room.z+room.h;z++)for(let x=room.x;x<room.x+room.w;x++){
@@ -144,11 +151,23 @@ for(const room of rooms){
   if(x<room.x+room.w-1)carve(x,z,'e');
   if(z<room.z+room.h-1)carve(x,z,'s');
  }
+ // 방을 미로의 여러 방향과 연결 (단일 출입구 방이 되지 않게)
+ for(let x=room.x;x<room.x+room.w;x+=2){
+  if(room.z>0)carve(x,room.z,'n');
+  if(room.z+room.h<N)carve(x,room.z+room.h-1,'s');
+ }
+ for(let z=room.z;z<room.z+room.h;z+=2){
+  if(room.x>0)carve(room.x,z,'w');
+  if(room.x+room.w<N)carve(room.x+room.w-1,z,'e');
+ }
 }
-// 추가 연결로 고리 형태 동선을 생성
+// DFS 기본 통로 외 벽의 상당수를 열어 루프 구조로 전환
 for(let z=1;z<N-1;z++)for(let x=1;x<N-1;x++){
- if(rand()<0.13)carve(x,z,rand()<0.5?'e':'s');
+ if(rand()<0.47)carve(x,z,rand()<0.5?'e':'s');
 }
+// 지도 중앙은 시작 방으로, 네 방향 모두 연결
+const MID=Math.floor(N/2);
+for(const side of ['n','s','e','w'])carve(MID,MID,side);
 
 // 충돌은 플레이어 주변의 작은 버킷만 확인
 const buckets=new Map();
@@ -193,11 +212,12 @@ function pillar(x,z,width=1.5){
 }
 for(const r of rooms){
  for(let z=r.z+1;z<r.z+r.h-1;z+=2)for(let x=r.x+1;x<r.x+r.w-1;x+=2){
-  pillar((center(x)+center(x-1))/2,(center(z)+center(z-1))/2,1.45);
+  const px=(center(x)+center(x-1))/2, pz=(center(z)+center(z-1))/2;
+  if(Math.hypot(px,pz)>7)pillar(px,pz,1.45);
  }
 }
 for(let z=1;z<N-1;z++)for(let x=1;x<N-1;x++){
- if(roomCells.has(`${x},${z}`)||Math.abs(x-15)+Math.abs(z-15)<3)continue;
+ if(roomCells.has(`${x},${z}`)||Math.abs(x-MID)+Math.abs(z-MID)<5)continue;
  if(rand()<0.055)pillar(center(x)+1.4,center(z)+1.4,1.25);
 }
 
@@ -205,8 +225,8 @@ for(let z=1;z<N-1;z++)for(let x=1;x<N-1;x++){
 const pits=[];
 const pitSet=new Set();
 for(let z=2;z<N-2;z++)for(let x=2;x<N-2;x++){
- if(Math.abs(x-15)+Math.abs(z-15)<4)continue;
- if(rand()<0.035){pitSet.add(key(x,z));}
+ if(Math.abs(x-MID)+Math.abs(z-MID)<7)continue;
+ if(rand()<0.025){pitSet.add(key(x,z));}
 }
 // 일부 구덩이는 크게, 일부는 작게 설정
 for(let z=0;z<N;z++)for(let x=0;x<N;x++){
@@ -232,11 +252,15 @@ roof.rotation.x=Math.PI/2;roof.position.y=CEILING;scene.add(roof);
 
 // 천장 형광등: 고정된 비율로 80% 정상, 10% 소등, 10% 깜빡임
 const fixtures=[];
-for(let z=0;z<N;z++)for(let x=0;x<N;x++)fixtures.push({x:center(x),z:center(z)});
+const fixtureGrid=Array.from({length:N},()=>Array(N));
+for(let z=0;z<N;z++)for(let x=0;x<N;x++){
+ const f={x:center(x),z:center(z),mode:"on",lit:true};
+ fixtureGrid[z][x]=f;fixtures.push(f);
+}
 for(let i=fixtures.length-1;i>0;i--){const j=ri(i+1);[fixtures[i],fixtures[j]]=[fixtures[j],fixtures[i]];}
 const total=fixtures.length;
 const offCount=Math.floor(total*0.1),flickerCount=Math.floor(total*0.1);
-fixtures.forEach((f,i)=>{f.mode=i<offCount?'off':i<offCount+flickerCount?'flicker':'on';f.phase=rand()*6.28;});
+fixtures.forEach((f,i)=>{f.mode=i<offCount?'off':i<offCount+flickerCount?'flicker':'on';f.phase=rand()*6.28;f.lit=f.mode!=='off';});
 const lightGeometry=new THREE.BoxGeometry(2.8,0.045,0.65);
 const panels=new THREE.InstancedMesh(lightGeometry,new THREE.MeshBasicMaterial({vertexColors:false}),total);
 const dummy=new THREE.Object3D();
@@ -247,22 +271,44 @@ fixtures.forEach((f,i)=>{
 });
 panels.instanceMatrix.needsUpdate=true;panels.instanceColor.needsUpdate=true;
 scene.add(panels);
-// PointLight는 성능을 위해 일부에만 배치
-const pool=[];
-for(let i=0;i<fixtures.length;i+=30){
- const f=fixtures[i];if(f.mode==='off')continue;
- const light=new THREE.PointLight(0xffe4a5,1.1,21,2);
- light.position.set(f.x,CEILING-0.25,f.z);scene.add(light);
- pool.push({light,f});
+// 실제 광원: 플레이어 근처의 형광등을 재활용해서 넓은 맵에서도 성능 유지
+// 전체 패널 80% 정상 / 10% 꺼짐 / 10% 깜빡임
+const LIGHT_POOL_SIZE=12;
+const lightPool=[];
+for(let i=0;i<LIGHT_POOL_SIZE;i++){
+ const light=new THREE.PointLight(0xffe8ab,2.0,17,1.8);
+ light.visible=false;
+ scene.add(light);
+ lightPool.push(light);
 }
-
+function fixtureLit(f){return f.mode==='on'||(f.mode==='flicker'&&f.lit);}
+function updateNearbyLighting(){
+ const px=camera.position.x,pz=camera.position.z;
+ const near=[];
+ // 셀 단위 탐색: 가까운 후보만 확인해서 전체 맵 스캔을 피함
+ const ix=Math.round(px/CELL+(N-1)/2),iz=Math.round(pz/CELL+(N-1)/2);
+ for(let z=Math.max(0,iz-3);z<=Math.min(N-1,iz+3);z++){
+  for(let x=Math.max(0,ix-3);x<=Math.min(N-1,ix+3);x++){
+   const f=fixtureGrid[z][x];
+   const d2=(px-f.x)**2+(pz-f.z)**2;
+   if(d2<500&&fixtureLit(f))near.push({f,d2});
+  }
+ }
+ near.sort((a,b)=>a.d2-b.d2);
+ lightPool.forEach((light,i)=>{
+  const v=near[i];
+  light.visible=!!v;
+  if(v){light.position.set(v.f.x,CEILING-0.35,v.f.z);light.intensity=2.0;}
+ });
+}
 // 입력
 const keys={};let yaw=0,pitch=0,dragging=false,oldX=0,oldY=0;
-let vy=0,grounded=true;
+let vy=0,grounded=true,camcorder=false;
 window.addEventListener('keydown',e=>{
  keys[e.code]=true;
  if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
  if(e.code==='KeyR'&&!e.repeat)reset();
+ if(e.code==='KeyQ'&&!e.repeat)camcorder=!camcorder;
 });
 window.addEventListener('keyup',e=>keys[e.code]=false);
 window.addEventListener('blur',()=>{Object.keys(keys).forEach(k=>keys[k]=false);dragging=false;});
@@ -291,7 +337,7 @@ function step(dt){
  const len=Math.hypot(ix,iz)||1;ix/=len;iz/=len;
  const running=!!(keys.ShiftLeft||keys.ShiftRight);
  const speed=running?RUN:WALK;
- status.textContent=running?'RUNNING':'WALK';
+ status.textContent=(running?'RUNNING':'WALK')+' | CAM '+(camcorder?'ON':'OFF');
  const dx=(ix*Math.cos(yaw)+iz*Math.sin(yaw))*speed*dt;
  const dz=(-ix*Math.sin(yaw)+iz*Math.cos(yaw))*speed*dt;
  // 작은 단계로 나누어 빠른 달리기에서 벽 통과 방지
@@ -321,20 +367,83 @@ function updateLights(t){
   panels.setColorAt(i,f.lit?bright:dark);
  });
  panels.instanceColor.needsUpdate=true;
- pool.forEach(({light,f})=>{if(f.mode==='flicker')light.intensity=f.lit?1.1:0;});
+ // 실시간 광원은 다음 updateNearbyLighting에서 최신 상태를 반영
 }
+// 캠코더 화면 후처리: 노이즈, 수평 주사선, 흐림, 비네트, 색 편차
+const renderTarget=new THREE.WebGLRenderTarget(1,1,{
+ minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,
+ depthBuffer:true
+});
+const postScene=new THREE.Scene();
+const postCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const postMat=new THREE.ShaderMaterial({
+ uniforms:{
+  tDiffuse:{value:renderTarget.texture},
+  uTime:{value:0},
+  uResolution:{value:new THREE.Vector2(1,1)}
+ },
+ vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}`,
+ fragmentShader:`
+  precision mediump float;
+  uniform sampler2D tDiffuse;
+  uniform float uTime;
+  uniform vec2 uResolution;
+  varying vec2 vUv;
+  float noise(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
+  void main(){
+   vec2 uv=vUv;
+   float line=floor(uv.y*uResolution.y/3.0);
+   float jitter=(noise(vec2(line,floor(uTime*24.0)))-0.5)*0.0012;
+   uv.x+=jitter;
+   vec2 px=1.0/uResolution;
+   // 작은 가우시안 유사 블러
+   vec3 col=texture2D(tDiffuse,uv).rgb*0.42;
+   col+=texture2D(tDiffuse,uv+vec2(px.x*1.4,0.0)).rgb*0.145;
+   col+=texture2D(tDiffuse,uv-vec2(px.x*1.4,0.0)).rgb*0.145;
+   col+=texture2D(tDiffuse,uv+vec2(0.0,px.y*1.4)).rgb*0.145;
+   col+=texture2D(tDiffuse,uv-vec2(0.0,px.y*1.4)).rgb*0.145;
+   float grain=noise(uv*uResolution+vec2(uTime*97.1,uTime*53.7))-0.5;
+   col+=grain*0.085;
+   float scan=0.96+0.04*sin(uv.y*uResolution.y*1.9);
+   col*=scan;
+   vec2 p=uv*2.0-1.0;
+   float vignette=1.0-0.3*pow(dot(p,p)*0.5,1.25);
+   col*=vignette;
+   col=mix(col,vec3(dot(col,vec3(0.299,0.587,0.114))),0.12);
+   gl_FragColor=vec4(col,1.0);
+  }
+ `,
+ depthTest:false,depthWrite:false
+});
+const postQuad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),postMat);
+postScene.add(postQuad);
 const clock=new THREE.Clock();
+let lightTimer=0;
 function animate(){
  requestAnimationFrame(animate);
  const dt=Math.min(clock.getDelta(),0.05);
  step(dt);updateLights(clock.elapsedTime);
- renderer.render(scene,camera);
+ lightTimer+=dt;
+ if(lightTimer>0.18){updateNearbyLighting();lightTimer=0;}
+ if(camcorder){
+  renderer.setRenderTarget(renderTarget);
+  renderer.render(scene,camera);
+  renderer.setRenderTarget(null);
+  postMat.uniforms.uTime.value=clock.elapsedTime;
+  renderer.render(postScene,postCamera);
+ }else{
+  renderer.setRenderTarget(null);
+  renderer.render(scene,camera);
+ }
 }
 function resize(){
  const w=host.clientWidth,h=host.clientHeight;
  camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h);
+ const scale=renderer.getPixelRatio();
+ renderTarget.setSize(Math.max(1,Math.floor(w*scale)),Math.max(1,Math.floor(h*scale)));
+ postMat.uniforms.uResolution.value.set(w*scale,h*scale);
 }
-new ResizeObserver(resize).observe(host);resize();animate();
+new ResizeObserver(resize).observe(host);resize();updateNearbyLighting();animate();
 </script></body></html>
 """
 
