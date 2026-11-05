@@ -112,7 +112,7 @@ function combine(parts,mat){
  parts.forEach(g=>g.dispose());
 }
 
-// 미로 셀: N=31, 한 변 248m. 탐색 가능한 모든 구역 연결.
+// 49 × 49 구역, 392m × 392m 맵. 모든 구역을 연결한다.
 const cells=Array.from({length:N},()=>Array.from({length:N},()=>({n:true,s:true,e:true,w:true,seen:false})));
 function carve(x,z,side){
  const dirs={n:[0,-1,'s'],s:[0,1,'n'],e:[1,0,'w'],w:[-1,0,'e']};
@@ -248,7 +248,24 @@ const pits=[];
 const pitSet=new Set();
 const pitWallParts=[], pitFogParts=[], pitBottomParts=[];
 const pitWallMat=new THREE.MeshLambertMaterial({color:0x161411,side:THREE.DoubleSide});
-const pitFogMat=new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.38,side:THREE.DoubleSide,depthWrite:false});
+// 검은 안개는 여러 겹의 사각형 대신 하나의 깊은 평면으로 렌더링한다.
+// 중첩된 검은 블록의 경계가 보이는 문제를 없애기 위한 방식.
+const pitFogMat=new THREE.ShaderMaterial({
+ side:THREE.DoubleSide,
+ depthWrite:true,
+ vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+ fragmentShader:`
+ precision mediump float;
+ varying vec2 vUv;
+ void main(){
+  vec2 centered=vUv-0.5;
+  float r=length(centered)*1.4142;
+  float mist=1.0-smoothstep(0.12,0.82,r);
+  vec3 dark=vec3(0.006,0.005,0.004);
+  dark+=vec3(0.014,0.012,0.009)*mist;
+  gl_FragColor=vec4(dark,1.0);
+ }`
+});
 const pitBottomMat=new THREE.MeshBasicMaterial({color:0x000000,side:THREE.DoubleSide});
 function pitSafe(x,z){
  if(x<2||z<2||x>=N-2||z>=N-2)return false;
@@ -266,22 +283,25 @@ function pitSafe(x,z){
 }
 function pit(x,z){
  const cx=center(x),cz=center(z),size=3.6,edge=(CELL-size)/2;
+ // 입구의 상부 바닥은 네 조각으로 나누고 중앙 영역은 비워 둔다.
  boxPart(floorParts,cx-(CELL+size)/4,-0.12,cz,edge,0.24,CELL,2.5);
  boxPart(floorParts,cx+(CELL+size)/4,-0.12,cz,edge,0.24,CELL,2.5);
  boxPart(floorParts,cx,-0.12,cz-(CELL+size)/4,size,0.24,edge,2.5);
  boxPart(floorParts,cx,-0.12,cz+(CELL+size)/4,size,0.24,edge,2.5);
- const depth=8.5,th=0.15;
+ // 구멍 측면 벽은 입구 바로 아래에서 시작해 깊은 곳까지 이어진다.
+ const depth=10.6,th=0.15;
  boxPart(pitWallParts,cx-size/2-th/2,-depth/2,cz,th,depth,size+th);
  boxPart(pitWallParts,cx+size/2+th/2,-depth/2,cz,th,depth,size+th);
  boxPart(pitWallParts,cx,-depth/2,cz-size/2-th/2,size,depth,th);
  boxPart(pitWallParts,cx,-depth/2,cz+size/2+th/2,size,depth,th);
- // 여러 장의 반투명 검은 막을 겹쳐 깊이를 볼 수 없게 만든다.
- for(const y of [-1.6,-3.2,-5.0,-6.8]){
-  const g=new THREE.PlaneGeometry(size-0.02,size-0.02);
-  g.rotateX(-Math.PI/2);g.translate(cx,y,cz);
-  pitFogParts.push(g);
- }
- boxPart(pitBottomParts,cx,-8.55,cz,size,0.05,size);
+ // 여러 검은 층을 쌓지 않고, 4.2m 아래의 단일 안개 면을 이용한다.
+ // 입구와 안개가 서로 다른 높이에 있으므로 겹쳐 보이지 않는다.
+ const fog=new THREE.PlaneGeometry(size,size);
+ fog.rotateX(-Math.PI/2);
+ fog.translate(cx,-4.2,cz);
+ pitFogParts.push(fog);
+ // 물리적으로 구멍 아래에만 존재하는 검은 바닥. 벽 끝에서 틈이 나지 않도록 함.
+ boxPart(pitBottomParts,cx,-10.45,cz,size,0.08,size);
  pits.push({x:cx,z:cz,half:size/2});
 }
 for(let z=0;z<N;z++)for(let x=0;x<N;x++){
