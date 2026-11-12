@@ -2,8 +2,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Backrooms Exploration", page_icon="🎮", layout="wide")
-st.title("BACKROOMS | Level 0 — v0.3.0")
-st.caption("v0.3.0 · WASD 이동 · Shift 달리기 · Space 점프 · Q 캠코더 · T 시간정지 · 마우스 드래그 시점 회전 · R 재시작 · 발소리/화면 흔들림 조절")
+st.title("BACKROOMS | Level 0 — v0.3.1")
+st.caption("v0.3.1 · WASD 이동 · Shift 달리기 · Space 점프 · Q 캠코더 · T 시간정지 · 마우스 드래그 시점 회전 · R 재시작 · 페이지 사이드바에서 이동 효과 조절")
 
 HTML = r"""
 <!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -14,12 +14,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#211f19;fon
 #status{position:absolute;top:15px;right:15px;color:#eee8d2;background:#171610cc;padding:10px 14px;border-radius:7px;font-size:13px;pointer-events:none}
 #caught{display:none;position:absolute;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:20;pointer-events:none}#caught img{max-width:72%;max-height:83%;object-fit:contain;border-radius:7px}#caught.active{display:flex}#cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#28251b;font-size:22px;pointer-events:none}
 
-#movementSettings{position:absolute;right:15px;top:63px;z-index:8;width:245px;box-sizing:border-box;background:rgba(22,21,17,.88);border:1px solid rgba(237,229,197,.25);border-radius:9px;padding:12px 14px;color:#eee8d2;font-size:12px;line-height:1.5}
-#movementSettings .settingHeading{font-size:13px;font-weight:bold;margin-bottom:9px}
-#movementSettings label{display:flex;justify-content:space-between;gap:12px;margin-top:9px}
-#movementSettings output{font-variant-numeric:tabular-nums;color:#fff9d8;font-weight:bold}
-#movementSettings input[type=range]{width:100%;accent-color:#c9b987;height:15px;cursor:pointer;margin:5px 0 1px}
-#movementSettings small{display:block;color:#c5bea2;margin-top:7px;line-height:1.45}
+#audioStart{position:absolute;top:132px;left:15px;z-index:10;background:#30291c;color:#ffefc1;border:1px solid #8d8255;border-radius:6px;padding:8px 12px;cursor:pointer;font-size:12px}
 </style>
 <script type="importmap">
 {
@@ -31,19 +26,10 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#211f19;fon
 </script>
 </head><body>
 <div id="game" tabindex="0"></div><div id="cross">+</div>
-<div id="hud"><b>BACKROOMS / LEVEL 0 — v0.3.0</b><br>WASD: 이동 · SHIFT: 달리기<br>SPACE: 점프 · 마우스 드래그: 시점<br>Q: 캠코더 ON/OFF · T: 시간 정지<br>R: 시작 지점으로 복귀</div>
-<div id="status">v0.3.0 | WALK | CAM OFF</div>
+<div id="hud"><b>BACKROOMS / LEVEL 0 — v0.3.1</b><br>WASD: 이동 · SHIFT: 달리기<br>SPACE: 점프 · 마우스 드래그: 시점<br>Q: 캠코더 ON/OFF · T: 시간 정지<br>R: 시작 지점으로 복귀</div>
+<div id="status">v0.3.1 | WALK | CAM OFF</div>
 
-<div id="movementSettings">
-  <div class="settingHeading">v0.3.0 | 이동 효과 테스트</div>
-  <label for="bobAmount">화면 흔들림 강도 <output id="bobAmountValue">0.8 cm</output></label>
-  <input id="bobAmount" type="range" min="0" max="4" step="0.1" value="0.8" aria-label="화면 흔들림 강도">
-  <label for="bobRate">걷기 흔들림 속도 <output id="bobRateValue">1.6 회/초</output></label>
-  <input id="bobRate" type="range" min="0.5" max="3.0" step="0.1" value="1.6" aria-label="걷기 흔들림 속도">
-  <label for="stepVolume">발소리 음량 <output id="stepVolumeValue">18%</output></label>
-  <input id="stepVolume" type="range" min="0" max="100" step="1" value="18" aria-label="발소리 음량">
-  <small>달리기 시 흔들림 속도는 걷기의 1.35배 · 화면 클릭 시 소리 활성화 · 0 cm이면 흔들림 없음</small>
-</div>
+<button id="audioStart" type="button">🔊 발소리 켜기 (클릭)</button>
 <div id="caught"><img src="__CAUGHT_IMAGE__" alt="아노코에게 잡힘"></div>
 <script type="module">
 import * as THREE from 'three';
@@ -543,19 +529,28 @@ function updateAnoko(dt,t){
 spawnAnoko();
 
 // ==================================================
-// v0.3.0: 실시간 화면 흔들림 조절 + 발소리(Web Audio API)
+// v0.3.1: 실시간 화면 흔들림 조절 + 발소리(Web Audio API)
 // player camera physical y is never modified permanently; visual bob is added
 // only during render, then restored so jump and hole physics remain unchanged.
 // ==================================================
-const bobAmountEl=document.getElementById('bobAmount');
-const bobRateEl=document.getElementById('bobRate');
-const stepVolumeEl=document.getElementById('stepVolume');
-let bobAmountCm=0.8, bobRateHz=1.6, footstepVolume=0.18;
-for(const [element,callback] of [
- [bobAmountEl,v=>{bobAmountCm=v;document.getElementById('bobAmountValue').textContent=v.toFixed(1)+' cm';}],
- [bobRateEl,v=>{bobRateHz=v;document.getElementById('bobRateValue').textContent=v.toFixed(1)+' 회/초';}],
- [stepVolumeEl,v=>{footstepVolume=v/100;document.getElementById('stepVolumeValue').textContent=Math.round(v)+'%';}]
-]) element.addEventListener('input',()=>callback(Number(element.value)));
+let bobAmountCm=3.0, bobRateHz=1.6, footstepVolume=0.45;
+// 사이드바의 독립적인 HTML 패널과 postMessage로 연결한다.
+// Streamlit 재실행 없이 게임 도중 수치를 변경할 수 있다.
+window.addEventListener('message',event=>{
+ const data=event.data;
+ if(!data || data.type!=='BACKROOMS_V031_SETTINGS')return;
+ const clamp=(v,lo,hi,fallback)=>Number.isFinite(Number(v))?Math.min(hi,Math.max(lo,Number(v))):fallback;
+ bobAmountCm=clamp(data.amount,0,4,bobAmountCm);
+ bobRateHz=clamp(data.rate,0.5,3,bobRateHz);
+ footstepVolume=clamp(data.volume,0,100,footstepVolume*100)/100;
+});
+// 패널의 초기값을 게임에 전달하도록 요청한다.
+try{
+ for(let i=0;i<window.parent.frames.length;i++){
+  const frame=window.parent.frames[i];
+  if(frame!==window)frame.postMessage({type:'BACKROOMS_V031_REQUEST_SETTINGS'},'*');
+ }
+}catch(e){console.warn('설정 동기화 요청 실패:',e);}
 
 let audioContext=null;
 let noiseBuffer=null;
@@ -573,8 +568,24 @@ function enableGameAudio(){
   if(audioContext.state==='suspended')audioContext.resume().catch(()=>{});
  }catch(e){console.warn('Audio unavailable:',e);}
 }
-renderer.domElement.addEventListener('pointerdown',enableGameAudio);
-window.addEventListener('keydown',enableGameAudio,{once:true});
+const audioStartButton=document.getElementById('audioStart');
+function startSound(){
+ enableGameAudio();
+ if(audioContext && audioContext.state==='running'){
+  audioStartButton.textContent='🔊 발소리 활성화됨';
+  audioStartButton.style.opacity='0.55';
+ }else if(audioContext){
+  audioContext.resume().then(()=>{
+   if(audioContext.state==='running'){
+    audioStartButton.textContent='🔊 발소리 활성화됨';
+    audioStartButton.style.opacity='0.55';
+   }
+  }).catch(()=>{});
+ }
+}
+audioStartButton.addEventListener('click',startSound);
+renderer.domElement.addEventListener('pointerdown',startSound);
+window.addEventListener('keydown',startSound);
 function playFootstep(running){
  if(!audioContext || audioContext.state!=='running' || !noiseBuffer || footstepVolume<=0)return;
  const now=audioContext.currentTime;
@@ -586,11 +597,23 @@ function playFootstep(running){
  filter.frequency.value=running?390:300;
  filter.Q.value=0.7;
  const gain=audioContext.createGain();
- const level=(running?0.10:0.075)*footstepVolume;
+ const level=(running?0.23:0.19)*footstepVolume;
  gain.gain.setValueAtTime(0.0001,now);
  gain.gain.exponentialRampToValueAtTime(Math.max(0.0002,level),now+0.012);
  gain.gain.exponentialRampToValueAtTime(0.0001,now+duration);
  noise.connect(filter);filter.connect(gain);gain.connect(audioContext.destination);
+ // 낮은 충격음 추가: 노이즈만 사용할 때 작은 스피커에서 거의 들리지 않는 현상 개선
+ const thump=audioContext.createOscillator();
+ const thumpGain=audioContext.createGain();
+ thump.type='sine';
+ thump.frequency.setValueAtTime(running?130:105,now);
+ thump.frequency.exponentialRampToValueAtTime(running?72:60,now+duration);
+ thumpGain.gain.setValueAtTime(0.0001,now);
+ thumpGain.gain.exponentialRampToValueAtTime(Math.max(0.0002,(running?0.10:0.08)*footstepVolume),now+0.009);
+ thumpGain.gain.exponentialRampToValueAtTime(0.0001,now+duration);
+ thump.connect(thumpGain);thumpGain.connect(audioContext.destination);
+ thump.start(now);thump.stop(now+duration+0.005);
+ thump.onended=()=>{thump.disconnect();thumpGain.disconnect();};
  noise.start(now);
  noise.stop(now+duration+0.005);
  noise.onended=()=>{noise.disconnect();filter.disconnect();gain.disconnect();};
@@ -788,4 +811,42 @@ ANOKO_NORMAL = "UklGRjg9AABXRUJQVlA4ICw9AABwrACdASoWAdYBPhUIg0GhBX4GBABRLS3fj/H9
 ANOKO_CAUGHT = "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"
 HTML = HTML.replace("__NORMAL_IMAGE__", "data:image/webp;base64," + ANOKO_NORMAL)
 HTML = HTML.replace("__CAUGHT_IMAGE__", "data:image/webp;base64," + ANOKO_CAUGHT)
+# 별도 Streamlit 사이드바 프레임: 슬라이더 조절 시 Python 앱을 재실행하지 않음
+SETTINGS_HTML = r"""
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<style>
+body{font:14px Arial,sans-serif;margin:0;padding:4px 6px;color:#ded9c6;background:#22211e}
+label{display:flex;justify-content:space-between;margin-top:13px;gap:5px}
+output{font-weight:bold;color:#fff5be;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:#ceb980;cursor:pointer;margin-top:8px}
+small{display:block;line-height:1.5;color:#aaa38f;margin-top:10px}
+</style></head><body>
+<b>BACKROOMS v0.3.1 · 움직임 설정</b>
+<label for="amount">화면 흔들림 <output id="amountOut">3.0 cm</output></label>
+<input id="amount" type="range" min="0" max="4" step="0.1" value="3.0">
+<label for="rate">흔들림 속도 <output id="rateOut">1.6 회/초</output></label>
+<input id="rate" type="range" min="0.5" max="3" step="0.1" value="1.6">
+<label for="volume">발소리 음량 <output id="volumeOut">45%</output></label>
+<input id="volume" type="range" min="0" max="100" step="1" value="45">
+<small>게임 화면 밖의 설정이야. 슬라이더를 변경하면 게임 재시작 없이 즉시 적용돼. 발소리가 들리지 않으면 게임 화면 안의 '발소리 켜기'를 눌러줘.</small>
+<script>
+const a=document.getElementById('amount'),r=document.getElementById('rate'),v=document.getElementById('volume');
+function broadcast(){
+ document.getElementById('amountOut').textContent=Number(a.value).toFixed(1)+' cm';
+ document.getElementById('rateOut').textContent=Number(r.value).toFixed(1)+' 회/초';
+ document.getElementById('volumeOut').textContent=v.value+'%';
+ const msg={type:'BACKROOMS_V031_SETTINGS',amount:Number(a.value),rate:Number(r.value),volume:Number(v.value)};
+ try{for(let i=0;i<window.parent.frames.length;i++)window.parent.frames[i].postMessage(msg,'*');}
+ catch(e){console.warn('설정 전달 실패',e);}
+}
+[a,r,v].forEach(x=>x.addEventListener('input',broadcast));
+window.addEventListener('message',e=>{if(e.data?.type==='BACKROOMS_V031_REQUEST_SETTINGS')broadcast();});
+broadcast();
+</script></body></html>
+"""
+with st.sidebar:
+    st.subheader("🎛️ 이동 효과 설정")
+    st.caption("설정은 게임 바깥에 표시되며 변경 시 게임이 초기화되지 않습니다.")
+    components.html(SETTINGS_HTML, height=300, scrolling=False)
+
 components.html(HTML, height=740, scrolling=False)
