@@ -2,8 +2,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Backrooms Exploration", page_icon="🎮", layout="wide")
-st.title("BACKROOMS | Level 0")
-st.caption("WASD 이동 · Shift 달리기 · Space 점프 · Q 캠코더 · T 시간정지 · 마우스 드래그 시점 회전 · R 재시작")
+st.title("BACKROOMS | Level 0 — v0.2.0")
+st.caption("v0.2.0 · WASD 이동 · Shift 달리기 · Space 점프 · Q 캠코더 · T 시간정지 · 마우스 드래그 시점 회전 · R 재시작")
 
 HTML = r"""
 <!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -24,8 +24,8 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#211f19;fon
 </script>
 </head><body>
 <div id="game" tabindex="0"></div><div id="cross">+</div>
-<div id="hud"><b>BACKROOMS / LEVEL 0</b><br>WASD: 이동 · SHIFT: 달리기<br>SPACE: 점프 · 마우스 드래그: 시점<br>Q: 캠코더 ON/OFF · T: 시간 정지<br>R: 시작 지점으로 복귀</div>
-<div id="status">WALK | CAM OFF</div>
+<div id="hud"><b>BACKROOMS / LEVEL 0 — v0.2.0</b><br>WASD: 이동 · SHIFT: 달리기<br>SPACE: 점프 · 마우스 드래그: 시점<br>Q: 캠코더 ON/OFF · T: 시간 정지<br>R: 시작 지점으로 복귀</div>
+<div id="status">v0.2.0 | WALK | CAM OFF</div>
 <div id="caught"><img src="__CAUGHT_IMAGE__" alt="아노코에게 잡힘"></div>
 <script type="module">
 import * as THREE from 'three';
@@ -244,18 +244,23 @@ for(let z=1;z<N-1;z++)for(let x=1;x<N-1;x++){
  if(rand()<0.055)pillar(center(x)+1.4,center(z)+1.4,1.25);
 }
 
-// 구멍은 벽/기둥과 분리된 열린 공간에서만 생성한다.
+// v0.2.0: 바닥 구멍은 실제 빈 공간으로 남긴다.
+// 별도의 검은 상부 평면/안개 판을 만들지 않아 겹치는 사각형을 제거한다.
 const pits=[];
 const pitSet=new Set();
 const pitWallParts=[], pitBottomParts=[];
-// 구멍의 옆면 자체를 깊이에 따라 검게 만드는 셰이더.
-// 검은 사각 평면을 위에 얹지 않기 때문에 겹쳐 보이는 현상을 제거한다.
+// 내부 측면은 바닥 아래에서 자연스럽게 어두워지는 단일 재질.
+// boxPart가 월드좌표로 정점을 이동시켰으므로 position.y를 직접 사용한다.
 const pitWallMat=new THREE.ShaderMaterial({
- side:THREE.DoubleSide,
- vertexShader:`varying float vWorldY;void main(){vec4 p=modelMatrix*vec4(position,1.0);vWorldY=p.y;gl_Position=projectionMatrix*viewMatrix*p;}`,
- fragmentShader:`precision mediump float;varying float vWorldY;void main(){float d=clamp((-vWorldY+0.15)/3.8,0.0,1.0);vec3 c=mix(vec3(0.105,0.086,0.060),vec3(0.001,0.001,0.001),d);gl_FragColor=vec4(c,1.0);}`
+ vertexShader:`varying float vHeight;
+ void main(){vHeight=position.y;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+ fragmentShader:`precision mediump float;varying float vHeight;
+ void main(){float darkness=clamp((-vHeight-0.10)/8.0,0.0,1.0);
+ vec3 upper=vec3(0.16,0.145,0.105);
+ gl_FragColor=vec4(mix(upper,vec3(0.0015),darkness),1.0);}`,
+ side:THREE.DoubleSide
 });
-const pitBottomMat=new THREE.MeshBasicMaterial({color:0x010101,side:THREE.DoubleSide});
+const pitBottomMat=new THREE.MeshBasicMaterial({color:0x010101,fog:false,side:THREE.DoubleSide});
 function pitSafe(x,z){
  if(x<2||z<2||x>=N-2||z>=N-2)return false;
  if(Math.abs(x-MID)+Math.abs(z-MID)<8)return false;
@@ -272,19 +277,20 @@ function pitSafe(x,z){
 }
 function pit(x,z){
  const cx=center(x),cz=center(z),size=3.6,edge=(CELL-size)/2;
- // 입구는 정확하게 4개의 바닥 면으로만 만든다. 중간의 검은 판은 없음.
+ // 주변 4개 바닥 조각은 정확히 맞닿게 구성. 내부에 표면을 덮는 평면은 만들지 않는다.
  boxPart(floorParts,cx-(CELL+size)/4,-0.12,cz,edge,0.24,CELL,2.5);
  boxPart(floorParts,cx+(CELL+size)/4,-0.12,cz,edge,0.24,CELL,2.5);
  boxPart(floorParts,cx,-0.12,cz-(CELL+size)/4,size,0.24,edge,2.5);
  boxPart(floorParts,cx,-0.12,cz+(CELL+size)/4,size,0.24,edge,2.5);
- // 안쪽 수직 벽은 입구 아래에만 있고, 깊어질수록 검어지는 셰이더 사용.
- const depth=17,th=0.12;
- boxPart(pitWallParts,cx-size/2-th/2,-depth/2,cz,th,depth,size+th);
- boxPart(pitWallParts,cx+size/2+th/2,-depth/2,cz,th,depth,size+th);
- boxPart(pitWallParts,cx,-depth/2,cz-size/2-th/2,size,depth,th);
- boxPart(pitWallParts,cx,-depth/2,cz+size/2+th/2,size,depth,th);
- // 바닥은 시야에서 훨씬 아래로 떨어뜨림.
- boxPart(pitBottomParts,cx,-17.1,cz,size-0.03,0.08,size-0.03);
+ // 수직 벽 상단은 바닥 상면(0)보다 아래(-0.24)부터 시작: 가장자리 돌출 방지.
+ const depth=30, top=-0.24,th=0.14;
+ const wallY=top-depth/2;
+ boxPart(pitWallParts,cx-size/2-th/2,wallY,cz,th,depth,size+th);
+ boxPart(pitWallParts,cx+size/2+th/2,wallY,cz,th,depth,size+th);
+ boxPart(pitWallParts,cx,wallY,cz-size/2-th/2,size,depth,th);
+ boxPart(pitWallParts,cx,wallY,cz+size/2+th/2,size,depth,th);
+ // 바닥은 깊은 곳에 단 한 개만 두며, 벽과 물리적으로 겹치지 않는다.
+ boxPart(pitBottomParts,cx,top-depth-0.08,cz,size-0.12,0.04,size-0.12);
  pits.push({x:cx,z:cz,half:size/2});
 }
 for(let z=0;z<N;z++)for(let x=0;x<N;x++){
@@ -398,7 +404,9 @@ const caughtPanel=document.getElementById('caught');
 let caughtUntil=0, anokoRoute=[], routeTimer=0, freezeEnemy=false;
 const enemySpeed=RUN;
 const toCell=(p)=>Math.max(0,Math.min(N-1,Math.round(p/CELL+(N-1)/2)));
-function safeEnemyPlace(x,z){return !collision(x,z)&&!overHole(x,z);}
+// 아노코는 벽에는 막히지만 구멍 위는 걸어서 건널 수 있다.
+// 플레이어만 구멍에 떨어지므로 아노코 충돌에서는 overHole을 검사하지 않는다.
+function safeEnemyPlace(x,z){return !collision(x,z);}
 function spawnAnoko(){
  let chosen=null;
  for(let i=0;i<250;i++){
@@ -445,33 +453,73 @@ function catchPlayer(now){
  anoko.material.map=anokoCaughtTexture;anoko.material.needsUpdate=true;anoko.scale.set(2.5,2.5,1);
  freezeEnemy=true;
 }
+// v0.2.0: 아노코의 높이(Y축)는 고정하며, 구멍은 이동 장애물에서 제외.
+// Three.js에서는 Y축이 높이이고 X/Z축은 바닥 방향이다.
+const ANOKO_Y=1.17;
+const ENEMY_RADIUS=RADIUS;
+function enemyWallAt(x,z){
+ // collision()은 벽/기둥 버킷만 검사한다. 구멍(pits)은 검사하지 않는다.
+ return collision(x,z);
+}
+function enemyClearSegment(ax,az,bx,bz){
+ const length=Math.hypot(bx-ax,bz-az);
+ if(length>90)return false; // 너무 먼 구간은 경로 탐색을 사용하여 검사 비용 절감
+ const samples=Math.max(1,Math.ceil(length/0.30));
+ for(let i=1;i<=samples;i++){
+  const t=i/samples;
+  if(enemyWallAt(ax+(bx-ax)*t,az+(bz-az)*t))return false;
+ }
+ return true;
+}
 function updateAnoko(dt,t){
  if(caughtUntil>0){
   if(t>=caughtUntil){caughtUntil=0;caughtPanel.classList.remove('active');reset();spawnAnoko();}
   return;
  }
- routeTimer-=dt;
  const sx=toCell(anoko.position.x),sz=toCell(anoko.position.z);
  const tx=toCell(camera.position.x),tz=toCell(camera.position.z);
- if(routeTimer<=0){anokoRoute=findRoute(sx,sz,tx,tz);routeTimer=0.7;}
+ routeTimer-=dt;
+ if(routeTimer<=0){anokoRoute=findRoute(sx,sz,tx,tz);routeTimer=0.6;}
  let targetX=camera.position.x,targetZ=camera.position.z;
- if(sx!==tx||sz!==tz){
-  if(anokoRoute.length){const id=anokoRoute[0];targetX=center(id%N);targetZ=center(Math.floor(id/N));}
-  else{targetX=center(sx);targetZ=center(sz);}
+ const ax=anoko.position.x, az=anoko.position.z;
+ // 플레이어가 보이면 대각선 포함, 정규화된 직선 벡터로 바로 추적한다.
+ if(!enemyClearSegment(ax,az,targetX,targetZ)){
+  // 보이지 않으면 BFS 경로 중 현재 위치에서 직접 보이는 가장 먼 경유점을 선택.
+  // 중앙 칸을 한 칸씩 밟는 기존 지그재그 이동을 줄인다.
+  let found=false;
+  for(let i=anokoRoute.length-1;i>=0;i--){
+   const id=anokoRoute[i],px=center(id%N),pz=center(Math.floor(id/N));
+   if(enemyClearSegment(ax,az,px,pz)){
+    targetX=px;targetZ=pz;found=true;break;
+   }
+  }
+  if(!found){
+   // 셀 목표가 막혔을 때는 이동 중인 셀의 중심을 사용한다.
+   targetX=center(sx);targetZ=center(sz);
+  }
  }
  const vx=targetX-anoko.position.x,vz=targetZ-anoko.position.z;
  const length=Math.hypot(vx,vz);
- if(length>0.05){
-   const travel=Math.min(length,enemySpeed*dt);
-   const dx=vx/length*travel,dz=vz/length*travel;
-   const steps=Math.max(1,Math.ceil(travel/0.18));
-   for(let i=0;i<steps;i++){
-    const nx=anoko.position.x+dx/steps;
-    if(safeEnemyPlace(nx,anoko.position.z))anoko.position.x=nx;
-    const nz=anoko.position.z+dz/steps;
-    if(safeEnemyPlace(anoko.position.x,nz))anoko.position.z=nz;
+ if(length>0.03){
+  const travel=Math.min(length,enemySpeed*dt);
+  const nx=vx/length,nz=vz/length;
+  const steps=Math.max(1,Math.ceil(travel/0.12));
+  let moved=false;
+  for(let i=0;i<steps;i++){
+   const x=anoko.position.x+nx*travel/steps;
+   const z=anoko.position.z+nz*travel/steps;
+   if(!enemyWallAt(x,z)){
+    anoko.position.x=x;anoko.position.z=z;moved=true;
+   }else{
+    // 벽에 걸릴 때만 벽을 따라 미끄러지는 축별 이동 허용.
+    if(!enemyWallAt(x,anoko.position.z)){anoko.position.x=x;moved=true;}
+    if(!enemyWallAt(anoko.position.x,z)){anoko.position.z=z;moved=true;}
    }
+  }
+  if(!moved)routeTimer=0; // 막히면 경로를 즉시 갱신한다.
  }
+ // 어떤 상황에서도 구멍 위에서 떨어지지 않고 수평면 높이 유지.
+ anoko.position.y=ANOKO_Y;
  if(Math.hypot(anoko.position.x-camera.position.x,anoko.position.z-camera.position.z)<1.0 && camera.position.y>0.6)catchPlayer(t);
 }
 spawnAnoko();
