@@ -2,8 +2,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Backrooms Exploration", page_icon="🎮", layout="wide")
-st.title("BACKROOMS | Level 0 — v0.2.0")
-st.caption("v0.2.0 · WASD 이동 · Shift 달리기 · Space 점프 · Q 캠코더 · T 시간정지 · 마우스 드래그 시점 회전 · R 재시작")
+st.title("BACKROOMS | Level 0 — v0.3.0")
+st.caption("v0.3.0 · WASD 이동 · Shift 달리기 · Space 점프 · Q 캠코더 · T 시간정지 · 마우스 드래그 시점 회전 · R 재시작 · 발소리/화면 흔들림 조절")
 
 HTML = r"""
 <!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -13,6 +13,13 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#211f19;fon
 #hud{position:absolute;top:15px;left:15px;color:#eee8d2;background:#171610cc;padding:12px 16px;border-radius:7px;line-height:1.7;font-size:13px;pointer-events:none}
 #status{position:absolute;top:15px;right:15px;color:#eee8d2;background:#171610cc;padding:10px 14px;border-radius:7px;font-size:13px;pointer-events:none}
 #caught{display:none;position:absolute;inset:0;background:rgba(0,0,0,.88);align-items:center;justify-content:center;z-index:20;pointer-events:none}#caught img{max-width:72%;max-height:83%;object-fit:contain;border-radius:7px}#caught.active{display:flex}#cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#28251b;font-size:22px;pointer-events:none}
+
+#movementSettings{position:absolute;right:15px;top:63px;z-index:8;width:245px;box-sizing:border-box;background:rgba(22,21,17,.88);border:1px solid rgba(237,229,197,.25);border-radius:9px;padding:12px 14px;color:#eee8d2;font-size:12px;line-height:1.5}
+#movementSettings .settingHeading{font-size:13px;font-weight:bold;margin-bottom:9px}
+#movementSettings label{display:flex;justify-content:space-between;gap:12px;margin-top:9px}
+#movementSettings output{font-variant-numeric:tabular-nums;color:#fff9d8;font-weight:bold}
+#movementSettings input[type=range]{width:100%;accent-color:#c9b987;height:15px;cursor:pointer;margin:5px 0 1px}
+#movementSettings small{display:block;color:#c5bea2;margin-top:7px;line-height:1.45}
 </style>
 <script type="importmap">
 {
@@ -24,8 +31,19 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#211f19;fon
 </script>
 </head><body>
 <div id="game" tabindex="0"></div><div id="cross">+</div>
-<div id="hud"><b>BACKROOMS / LEVEL 0 — v0.2.0</b><br>WASD: 이동 · SHIFT: 달리기<br>SPACE: 점프 · 마우스 드래그: 시점<br>Q: 캠코더 ON/OFF · T: 시간 정지<br>R: 시작 지점으로 복귀</div>
-<div id="status">v0.2.0 | WALK | CAM OFF</div>
+<div id="hud"><b>BACKROOMS / LEVEL 0 — v0.3.0</b><br>WASD: 이동 · SHIFT: 달리기<br>SPACE: 점프 · 마우스 드래그: 시점<br>Q: 캠코더 ON/OFF · T: 시간 정지<br>R: 시작 지점으로 복귀</div>
+<div id="status">v0.3.0 | WALK | CAM OFF</div>
+
+<div id="movementSettings">
+  <div class="settingHeading">v0.3.0 | 이동 효과 테스트</div>
+  <label for="bobAmount">화면 흔들림 강도 <output id="bobAmountValue">0.8 cm</output></label>
+  <input id="bobAmount" type="range" min="0" max="4" step="0.1" value="0.8" aria-label="화면 흔들림 강도">
+  <label for="bobRate">걷기 흔들림 속도 <output id="bobRateValue">1.6 회/초</output></label>
+  <input id="bobRate" type="range" min="0.5" max="3.0" step="0.1" value="1.6" aria-label="걷기 흔들림 속도">
+  <label for="stepVolume">발소리 음량 <output id="stepVolumeValue">18%</output></label>
+  <input id="stepVolume" type="range" min="0" max="100" step="1" value="18" aria-label="발소리 음량">
+  <small>달리기 시 흔들림 속도는 걷기의 1.35배 · 화면 클릭 시 소리 활성화 · 0 cm이면 흔들림 없음</small>
+</div>
 <div id="caught"><img src="__CAUGHT_IMAGE__" alt="아노코에게 잡힘"></div>
 <script type="module">
 import * as THREE from 'three';
@@ -524,6 +542,75 @@ function updateAnoko(dt,t){
 }
 spawnAnoko();
 
+// ==================================================
+// v0.3.0: 실시간 화면 흔들림 조절 + 발소리(Web Audio API)
+// player camera physical y is never modified permanently; visual bob is added
+// only during render, then restored so jump and hole physics remain unchanged.
+// ==================================================
+const bobAmountEl=document.getElementById('bobAmount');
+const bobRateEl=document.getElementById('bobRate');
+const stepVolumeEl=document.getElementById('stepVolume');
+let bobAmountCm=0.8, bobRateHz=1.6, footstepVolume=0.18;
+for(const [element,callback] of [
+ [bobAmountEl,v=>{bobAmountCm=v;document.getElementById('bobAmountValue').textContent=v.toFixed(1)+' cm';}],
+ [bobRateEl,v=>{bobRateHz=v;document.getElementById('bobRateValue').textContent=v.toFixed(1)+' 회/초';}],
+ [stepVolumeEl,v=>{footstepVolume=v/100;document.getElementById('stepVolumeValue').textContent=Math.round(v)+'%';}]
+]) element.addEventListener('input',()=>callback(Number(element.value)));
+
+let audioContext=null;
+let noiseBuffer=null;
+function enableGameAudio(){
+ try{
+  if(!audioContext){
+   const AC=window.AudioContext||window.webkitAudioContext;
+   if(!AC)return;
+   audioContext=new AC();
+   const length=Math.floor(audioContext.sampleRate*0.20);
+   noiseBuffer=audioContext.createBuffer(1,length,audioContext.sampleRate);
+   const samples=noiseBuffer.getChannelData(0);
+   for(let i=0;i<length;i++) samples[i]=Math.random()*2-1;
+  }
+  if(audioContext.state==='suspended')audioContext.resume().catch(()=>{});
+ }catch(e){console.warn('Audio unavailable:',e);}
+}
+renderer.domElement.addEventListener('pointerdown',enableGameAudio);
+window.addEventListener('keydown',enableGameAudio,{once:true});
+function playFootstep(running){
+ if(!audioContext || audioContext.state!=='running' || !noiseBuffer || footstepVolume<=0)return;
+ const now=audioContext.currentTime;
+ const duration=running?0.115:0.145;
+ const noise=audioContext.createBufferSource();
+ noise.buffer=noiseBuffer;
+ const filter=audioContext.createBiquadFilter();
+ filter.type='lowpass';
+ filter.frequency.value=running?390:300;
+ filter.Q.value=0.7;
+ const gain=audioContext.createGain();
+ const level=(running?0.10:0.075)*footstepVolume;
+ gain.gain.setValueAtTime(0.0001,now);
+ gain.gain.exponentialRampToValueAtTime(Math.max(0.0002,level),now+0.012);
+ gain.gain.exponentialRampToValueAtTime(0.0001,now+duration);
+ noise.connect(filter);filter.connect(gain);gain.connect(audioContext.destination);
+ noise.start(now);
+ noise.stop(now+duration+0.005);
+ noise.onended=()=>{noise.disconnect();filter.disconnect();gain.disconnect();};
+}
+let stridePhase=0; // cycles, [0..1)
+let bobBlend=0; // smooth 0..1 fade on stop to limit motion discomfort
+let visualBobY=0;
+function updateMovementEffects(dt,movement){
+ const moving=movement.moving && movement.grounded && movement.distance>0.001;
+ const targetBlend=moving?1:0;
+ bobBlend+=(targetBlend-bobBlend)*Math.min(1,dt*(moving?5:7));
+ if(moving){
+  const hz=bobRateHz*(movement.running?1.35:1);
+  const previous=stridePhase;
+  stridePhase=(stridePhase+hz*dt)%1;
+  if(stridePhase<previous)playFootstep(movement.running);
+ }
+ // very gentle up/down only; amplitude in meters, 1cm = 0.01m
+ visualBobY=Math.sin(stridePhase*Math.PI*2)*(bobAmountCm/100)*bobBlend;
+}
 // 입력
 const keys={};let yaw=0,pitch=0,dragging=false,oldX=0,oldY=0;
 let timePaused=false, gameTime=0;
@@ -566,6 +653,7 @@ function step(dt){
  const dx=(ix*Math.cos(yaw)+iz*Math.sin(yaw))*speed*dt;
  const dz=(-ix*Math.sin(yaw)+iz*Math.cos(yaw))*speed*dt;
  // 작은 단계로 나누어 빠른 달리기에서 벽 통과 방지
+ const previousPlayerX=camera.position.x,previousPlayerZ=camera.position.z;
  const count=Math.max(1,Math.ceil(Math.hypot(dx,dz)/0.22));
  for(let i=0;i<count;i++){
   const xx=camera.position.x+dx/count;
@@ -580,6 +668,8 @@ function step(dt){
  else if(hole){grounded=false;}
  if(camera.position.y>CEILING-0.2){camera.position.y=CEILING-0.2;vy=Math.min(0,vy);}
  if(camera.position.y<-7){reset();spawnAnoko();}
+ const movedDistance=Math.hypot(camera.position.x-previousPlayerX,camera.position.z-previousPlayerZ);
+ return {moving:!!(ix||iz),running:running,grounded:grounded&&!hole,distance:movedDistance};
 }
 function updateLights(t){
  let changed=false;
@@ -652,7 +742,8 @@ function animate(){
  requestAnimationFrame(animate);
  const dt=Math.min(clock.getDelta(),0.05);
  // T: 플레이어는 계속 움직이고, 아노코/깜빡임/게임 타이머만 멈춤.
- if(caughtUntil<=0) step(dt);
+ if(caughtUntil<=0) updateMovementEffects(dt,step(dt));
+ else updateMovementEffects(dt,{moving:false,running:false,grounded:false,distance:0});
  if(!timePaused){
   gameTime+=dt;
   updateAnoko(dt,gameTime);
@@ -664,6 +755,9 @@ function animate(){
  if(timePaused){
   status.textContent='TIME STOPPED | MOVE ENABLED | T: RESUME';
  }
+ // bob applies only for rendered view, not to persistent player physics state
+ const playerEyeY=camera.position.y;
+ camera.position.y=playerEyeY+visualBobY;
  if(camcorder){
   renderer.setRenderTarget(renderTarget);
   renderer.render(scene,camera);
@@ -674,6 +768,7 @@ function animate(){
   renderer.setRenderTarget(null);
   renderer.render(scene,camera);
  }
+ camera.position.y=playerEyeY;
 }
 function resize(){
  const w=host.clientWidth,h=host.clientHeight;
